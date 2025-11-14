@@ -1,0 +1,1062 @@
+import pandas as pd
+from datetime import datetime, timedelta
+import random
+import hashlib
+import json
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# .envファイルから環境変数を読み込む
+load_dotenv()
+
+# ハッシュベースのインデックス選択関数
+def get_hash_index(contents_id, salt, max_value):
+    """contents_idとsaltから一意のインデックスを生成"""
+    hash_input = f"{contents_id}_{salt}".encode('utf-8')
+    hash_value = int(hashlib.sha256(hash_input).hexdigest(), 16)
+    return hash_value % max_value
+
+def get_seed_value(contents_id, function_type):
+    """contents_idから関数タイプ別のユニークなシード値を生成
+
+    大きな素数を使ってシードの分散を改善し、異なる関数で同じシード値にならないようにする
+    """
+    prime = 7919  # 大きな素数
+    offset_map = {
+        'cards': 0,
+        'title': 1,
+        'catch': 2,
+        'caption': 3,
+        'components': 4,
+        'items': 5
+    }
+    offset = offset_map.get(function_type, 0)
+    return contents_id * prime + offset * 97
+
+# カードデータを読み込む
+card_df = pd.read_csv('card_name.csv', encoding='utf-8')
+category_df = pd.read_csv('category_id.csv', encoding='utf-8')
+
+# 全44カードのIDリスト
+ALL_CARDS = list(range(1, 45))
+
+# カテゴリー別の基本構成要素（大幅に拡充 - 各要素20パターン以上）
+category_components = {
+    1: {  # 両思い
+        'themes': ['愛の深まり', '関係の進展', '二人の未来', '絆の強化', '愛の確認', '関係の安定', '愛の成長', '二人の幸せ', '心の繋がり', '愛の形', '永遠の絆', '真実の愛', '運命の絆', '心の調和', '愛の輝き', '二人の軌跡', '魂の繋がり', '愛の深化', '関係の成熟', '永続する愛'],
+        'subjects': ['あの人', 'パートナー', '恋人', '大切な人', '愛する人', '二人', 'あの方', 'その人', '彼', '彼女', '運命の人', '最愛の人', '特別な人', 'かけがえのない人', 'ソウルメイト', '伴侶', '愛しい人', '心の支え', '人生の伴走者', '共に歩む人'],
+        'concerns': ['本当の気持ち', '深層心理', '隠れた想い', '本音', '真実の感情', '心の奥', '秘めた思い', '内面', '本心', '真の気持ち', '偽らざる思い', '心の声', '素直な感情', '率直な想い', '内なる声', '魂の叫び', '真摯な思い', '誠実な気持ち', '純粋な感情', '正直な心'],
+        'futures': ['進む道', '今後の二人', '将来の関係', '未来の姿', 'これからの展開', '二人の行方', '関係の方向性', '先の見通し', '運命の道筋', '歩む未来', '待ち受ける未来', '築く未来', '迎える明日', '訪れる展開', '紡ぐ未来', '描く未来図', '辿る道', '開ける未来', '続く物語', '結ばれる運命'],
+        'actions': ['続けるべきこと', '大切にすること', '心がけること', '意識すべきこと', '実践すること', '行うべきこと', '守るべきこと', '育むべきこと', '磨くべきこと', '高めるべきこと', '深めるべきこと', '忘れてはならないこと', '貫くべきこと', '持ち続けるべきこと', '大事にすること', '尊重すること', '維持すること', '発展させること', '強化すること', '充実させること']
+    },
+    2: {  # 片思い
+        'themes': ['恋の成就', '想いの実現', '片想いの行方', '恋愛成就', '恋の進展', '想いの伝わり', '恋の可能性', '願いの成就', '恋の結末', '愛の実り', '恋の結実', '想いの到達', '恋の完成', '愛の開花', '恋の勝利', '想いの成果', '恋の達成', '愛の獲得', '恋の実現', '想いの結晶'],
+        'subjects': ['憧れの人', 'あの人', '好きな人', '想い人', '気になる人', 'その人', '心惹かれる人', '特別な存在', '思い続ける人', '恋する相手', '意中の人', '慕う人', '求める人', '追いかける人', '夢見る相手', '憧憬の対象', '理想の人', '想いを寄せる人', '恋い焦がれる人', '心奪われた人'],
+        'concerns': ['現在の感情', '今の気持ち', '心の中', '本当の想い', '隠れた感情', '真実の心', '秘めた気持ち', '内心', '本音の部分', '正直な感情', '偽りない想い', '素の気持ち', '心の奥底', '真の感情', '率直な心', '誠実な想い', '純粋な気持ち', '心の真実', '魂の声', '内なる想い'],
+        'futures': ['恋の結末', '想いの行方', '二人の未来', '恋の成り行き', '関係の展開', '恋の先行き', '二人の可能性', '恋の結果', '未来の関係', '先の展望', '恋の到達点', '想いの帰結', '二人の運命', '恋の顛末', '関係の結論', '恋の終着点', '二人の方向性', '恋の完結', '想いの終点', '関係の未来図'],
+        'actions': ['避けるべきこと', '注意すること', '心がけること', '実行すべきこと', '控えること', '意識すること', '行動すべきこと', '気をつけること', '大切にすること', '忘れないこと', '守るべきこと', '続けること', 'やめるべきこと', '改善すること', '強化すること', '変えること', '維持すること', '高めること', '磨くこと', '発展させること']
+    },
+    3: {  # 相手の気持ち
+        'themes': ['真意の把握', '本音の理解', '感情の真相', '心の読解', '想いの本質', '気持ちの実態', '心情の解明', '感情の核心', '想いの深層', '気持ちの真実', '心の真相', '感情の本体', '想いの正体', '心情の実像', '気持ちの実相', '感情の真髄', '想いの真意', '心の本音', '感情の深部', '想いの真実'],
+        'subjects': ['その人', 'あの人', '相手', '気になる人', '大切な人', 'あの方', '特定の人', '問題の人', '心配な人', '知りたい相手', '対象の人', '当の本人', '例の人', '意中の人', '関心のある人', '注目の相手', '気がかりな人', '見守る相手', '思う人', '想いを寄せる人'],
+        'concerns': ['偽らざる思い', '心の真実', '正直な想い', '本当の感情', '真の気持ち', '素直な心', '率直な想い', '誠実な感情', '内心の声', '心の奥底', '本音の部分', '隠れた想い', '秘めた感情', '深層の心', '真摯な思い', '純粋な気持ち', '正直な心情', '偽りない感情', '本心からの想い', '魂の叫び'],
+        'futures': ['今後の展開', '先行きの様子', '未来の動向', 'これからの変化', '先の見通し', '今後の推移', '将来の姿', '先々の状況', '未来の形', '今後の成り行き', '先の展望', '将来像', '今後の方向性', '先行きの予測', '未来予想図', '今後の流れ', '先の動き', '将来展望', '今後の見込み', '先々の見通し'],
+        'actions': ['効果的な方法', '適切な行動', '賢明な選択', '正しい対応', '最善の策', '有効な手段', '的確な判断', '適当な処置', '妥当な行い', '相応しい態度', '望ましい姿勢', '理想的な対応', '推奨される行動', '薦められる方法', '勧める手段', '良い選択', '正解の道', '最適解', 'ベストな対応', '賢い判断']
+    },
+    4: {  # 不倫
+        'themes': ['葛藤', '禁断の愛', '複雑な関係', '運命の選択', '心の迷い', '愛と罪悪感', '秘密の恋', '許されぬ愛', '究極の選択', '心の分裂', '道徳との葛藤', '理性と感情', '背徳の愛', '隠れた想い', '二つの顔', '内なる戦い', '揺れる心', '倫理との対峙', '秘められた関係', '運命の岐路'],
+        'subjects': ['忘れられない人', 'あの人', '特別な存在', '心惹かれる人', '運命の人', 'その人', '魅力的な相手', '心奪われた人', '愛する人', '想い人', '離れられない人', '大切な存在', '唯一無二の人', '求める相手', '憧れの人', '心の支え', '精神的支柱', '魂の伴侶', '理想の相手', '運命の相手'],
+        'concerns': ['あなたへの愛', '真実の想い', '本当の気持ち', '心の声', '偽らざる感情', '深い愛情', '秘めた想い', '真摯な愛', '本音の愛', '心からの想い', '誠実な気持ち', '純粋な愛', '真の感情', '率直な想い', '素直な愛', '正直な心', '内なる愛', '魂の叫び', '心の真実', '深層の想い'],
+        'futures': ['選択の先', '運命の分岐点', '二人の未来', '関係の行方', '決断の結果', '選んだ道', '未来の姿', '運命の帰結', '関係の結末', '選択の果て', '決断の先', '二人の結論', '運命の終着点', '関係の完結', '選択後の世界', '決めた未来', '関係の到達点', '運命の最終形', '二人の帰着', '選択の帰結'],
+        'actions': ['決断すべきこと', '考えるべきこと', '見つめ直すこと', '問うべきこと', '判断すべきこと', '選ぶべきこと', '覚悟すること', '向き合うこと', '受け入れること', '理解すること', '決意すること', '見極めること', '吟味すること', '熟考すること', '検討すること', '省みること', '振り返ること', '再考すること', '思案すること', '選択すること']
+    },
+    5: {  # 夜の相性
+        'themes': ['調和', '深化', '一体感', '絆の深まり', '親密さ', '心身の融合', '相性の真実', '二人の秘密', '特別な時間', '魂の共鳴', '完全な調和', '究極の一体感', '深い結びつき', '肉体と精神', '愛の極致', '二人だけの世界', '心身の調和', '完璧な相性', '特別な絆', '深い繋がり'],
+        'subjects': ['あの方', 'パートナー', '相手', 'その人', '愛する人', '大切な人', '運命の人', '特別な存在', '心を許す人', '魂の伴侶', '二人', 'あの人', '愛しい人', '心通う相手', '理解し合える人', '一体となる人', '共鳴する相手', '心身を委ねる人', '信頼する人', '結ばれた相手'],
+        'concerns': ['調和', '相性', '一体感', '満足度', '深まり', '心地よさ', '充実感', '幸福感', '親密度', '繋がり', '共鳴度', '適合性', '調和度', '合致度', 'マッチング', '波長', 'フィーリング', 'ケミストリー', 'シナジー', 'ハーモニー'],
+        'futures': ['深化', '発展', '進化', '成長', '高まり', '深まり', '強化', '充実', '向上', '昇華', '熟成', '洗練', '完成', '開花', '結実', '到達', '極致', '完璧', '理想', '究極'],
+        'actions': ['意識すること', '大切にすること', '高めること', '深めること', '磨くこと', '育むこと', '強化すること', '向上させること', '充実させること', '発展させること', '極めること', '追求すること', '研ぎ澄ますこと', '洗練させること', '完成させること', '昇華させること', '成熟させること', '豊かにすること', '深化させること', '進化させること']
+    },
+    6: {  # 結婚
+        'themes': ['永遠の絆', '結婚生活', '夫婦の未来', '家庭の築き方', '二人の人生', '結婚の意味', '生涯のパートナー', '家族の形成', '共同生活', '人生の伴侶', '結婚の真実', '夫婦の絆', '家庭の基盤', '二人の誓い', '婚姻関係', '夫婦の道', '家庭運営', '結婚の本質', '永続する関係', '生涯の約束'],
+        'subjects': ['結婚相手', 'パートナー', '配偶者', '伴侶', '生涯の伴侶', '運命の人', '将来の夫', '将来の妻', '人生の伴走者', '共に歩む人', 'かけがえのない人', '選んだ相手', '誓い合った人', '結ばれる人', '共にする人', '添い遂げる人', '支え合う相手', '分かち合う人', '築く相手', '歩む伴侶'],
+        'concerns': ['結婚の意思', '真剣度', '覚悟', '決意', '本気度', '誠実さ', '真摯な想い', '結婚への想い', '将来への考え', '家族への思い', '責任感', 'commitment', '献身度', '真剣さ', '本音', '真意', '心の準備', '決断力', '覚悟の程', '本当の気持ち'],
+        'futures': ['結婚後の生活', '夫婦の未来', '家庭の将来', '二人の人生', '結婚生活', '家族の未来', '共同生活', '人生設計', '将来設計', '夫婦の道のり', '家庭の形', '二人の歩み', '結婚の行方', '家族の姿', '共に築く未来', '二人の運命', '家庭運営', '夫婦の軌跡', '生活の展望', '人生の設計図'],
+        'actions': ['準備すべきこと', '覚悟すること', '学ぶべきこと', '理解すること', '話し合うこと', '決めること', '確認すること', '考えること', '築くべきこと', '育むべきこと', '大切にすること', '尊重すること', '協力すること', '支え合うこと', '理解し合うこと', '譲り合うこと', '思いやること', '信頼すること', '尊敬すること', '愛し合うこと']
+    },
+    7: {  # 人生
+        'themes': ['人生の岐路', '運命の方向性', '生きる意味', '人生の目的', '天命', '使命', '人生設計', '自己実現', '生きがい', '人生の価値', '存在意義', '人生哲学', '生の意味', '人生の真実', '運命の道', '人生の軌跡', '生き方', '人生観', '価値観', '人生の選択'],
+        'subjects': ['あなた自身', '自分', '本当のあなた', '魂', '内なる自己', '真の自分', '本来の姿', '深層の自己', '潜在的な自分', '本質的な存在', '真実の自己', '核心の自分', '根源的な存在', '本当の姿', '素の自分', '純粋な自己', '原初の自分', '本来の存在', '真の姿', '魂の本質'],
+        'concerns': ['心の幸せ', '生きがい', '人生の満足', '充実感', '幸福感', '心の平安', '内なる喜び', '真の幸せ', '心の充足', '精神的満足', '魂の喜び', '人生の意義', '存在価値', '生の充実', '心の豊かさ', '精神の安寧', '魂の充足', '真の満足', '深い喜び', '究極の幸せ'],
+        'futures': ['現在地点', '今の立ち位置', '現状', '現在の状況', '今の段階', '現時点', '今この瞬間', '現在の位置', '今の場所', '現段階', '今のステージ', '現在のフェーズ', '今の時点', '現時の状態', '今の状況', '現在のレベル', '今の立場', '現時点の状態', '今の境遇', '現在の環境'],
+        'actions': ['人生の指針', '進むべき道', '選ぶべき方向', '歩むべき道', '目指す方向性', '取るべき道筋', '選択すべき道', '進むべき方向', '向かうべき先', '辿るべき道', '歩むべき方向', '選ぶべき道筋', '進むべき方針', '取るべき方向', '目指すべき道', '向かうべき方向', '辿るべき方向', '歩くべき道', '選択すべき方向', '進むべき道筋']
+    },
+    8: {  # 仕事
+        'themes': ['仕事運', 'キャリア', '職業的成功', '仕事の発展', '職場環境', 'プロフェッショナル', '仕事の充実', 'キャリアパス', '職業的満足', '仕事の成果', 'ビジネス運', '職業運', 'キャリア形成', '仕事の実現', '職業的達成', '仕事の成就', 'プロとしての道', '職業的成長', '仕事の完成', 'キャリアの確立'],
+        'subjects': ['あなた', '自分自身', '職業人としての自分', 'プロとしてのあなた', 'ビジネスパーソン', '社会人', '働くあなた', 'キャリア形成者', '職業的存在', '仕事人', 'プロフェッショナル', '職人', 'ビジネスマン', 'ワーカー', '従事者', '実務者', 'キャリアウーマン', '職業人', '稼ぐ者', '働き手'],
+        'concerns': ['仕事との向き合い方', '職業意識', 'プロ意識', '仕事への姿勢', '職業倫理', '仕事観', 'キャリア観', '職業観', '労働観', '仕事哲学', 'プロ精神', '職人気質', 'ワークスタイル', '仕事への思い', '職業への想い', 'キャリアへの考え', '仕事の価値観', '職業的信念', '仕事への信念', 'プロとしての誇り'],
+        'futures': ['仕事の将来性', 'キャリアの行方', '職業的未来', '仕事の見通し', 'キャリアパス', '職業的展望', '仕事の先行き', 'キャリアの展開', '職業的方向性', '仕事の可能性', 'キャリアの未来', '職業的な道', '仕事の発展性', 'キャリア展望', '職業的成長', '仕事の進展', 'キャリアビジョン', '職業的到達点', '仕事の結実', 'キャリアゴール'],
+        'actions': ['効果的な方法', '成功の秘訣', '実践すべきこと', '重視すべき点', '意識すべきこと', '取り組むべきこと', '磨くべき能力', '高めるべきスキル', '発展させること', '強化すべき点', '改善すべきこと', '継続すべきこと', '追求すべきこと', '究めるべきこと', '身につけること', '習得すること', '鍛えること', '育成すること', '開発すること', '向上させること']
+    },
+    9: {  # 復縁
+        'themes': ['関係の再構築', 'やり直し', '復縁の可能性', '再び結ばれる運命', '関係の修復', '二度目のチャンス', 'もう一度の愛', '再会の意味', '縁の再生', '愛の復活', '絆の再建', '関係の蘇生', '愛の再燃', '縁の復活', '再スタート', '新たな始まり', '関係の再生', '絆の修復', '愛の再構築', '関係の再開'],
+        'subjects': ['別れた相手', '元恋人', '忘れられない人', '過去の恋人', 'かつての相手', '以前の恋人', '昔の相手', '元パートナー', '過去の愛', '失った人', '別れたあの人', 'もう一度会いたい人', 'やり直したい相手', '未練のある人', '思い出の人', '戻りたい相手', '再会したい人', '縁を繋ぎたい人', '心残りの相手', '忘れられぬ人'],
+        'concerns': ['今の想い', '現在の気持ち', '復縁への意思', 'やり直す気持ち', '過去への想い', '未練', '心残り', '後悔', '愛の残滓', '消えない想い', '忘れられない気持ち', 'まだある愛', '残る感情', '諦めきれない想い', '戻りたい気持ち', 'もう一度の想い', '再会への願い', '復縁への願望', 'やり直したい思い', '縁の再生願望'],
+        'futures': ['復縁の可能性', 'やり直しの見込み', '二人の再会', '関係の再開', '縁の復活', '愛の再燃', '二度目のチャンス', '関係の修復', '絆の再構築', '再スタートの可能性', '復縁の展望', 'やり直せる未来', '二人の再生', '関係の蘇生', '愛の復活', '縁の再生', '再び結ばれる未来', 'もう一度の関係', '二人の再建', '復縁後の未来'],
+        'actions': ['取るべき行動', '実行すべきこと', '心がけること', '避けるべきこと', '準備すること', '整理すべきこと', '理解すること', '受け入れること', '反省すること', '改善すること', '変えるべきこと', '成長すること', '学ぶべきこと', '考え直すこと', '見つめ直すこと', '決断すること', '選択すること', '判断すること', '覚悟すること', '行動に移すこと']
+    },
+    10: {  # 出会い
+        'themes': ['運命の出会い', '新しい出会い', '縁の始まり', '恋の予感', '出会いの運命', '新たな縁', '恋愛運', '出会いのチャンス', '運命の人', '理想の相手', '素敵な出会い', '特別な縁', '出会いの奇跡', '恋の始まり', '縁結び', '出会いの幸運', '新しい恋', '運命的な出会い', '出会いの予兆', '恋愛の予感'],
+        'subjects': ['あなた', '自分自身', '恋を求めるあなた', '出会いを待つあなた', '愛を探すあなた', '恋愛運のあなた', '縁を求める自分', '運命の相手を待つ自分', '理想を持つあなた', '幸せを求めるあなた', '愛に飢えたあなた', '恋に憧れる自分', '出会いを願うあなた', '素敵な人を探すあなた', '運命を信じるあなた', '縁を大切にするあなた', '愛を信じる自分', '幸せを掴みたいあなた', '出会いに期待するあなた', '恋の扉を開くあなた'],
+        'concerns': ['今の恋愛運', '出会いの運勢', '恋愛傾向', '魅力度', 'モテ運', '恋愛適性', '恋の運命', '出会いの運', '恋愛の波', '縁の強さ', '恋愛エネルギー', '出会いの引力', '恋の磁力', '魅力の輝き', '恋愛オーラ', '出会いの波動', '恋の予感度', '縁の巡り', '恋愛バイオリズム', '出会いの好機'],
+        'futures': ['出会いの時期', '縁の訪れ', '恋の始まり', '運命の瞬間', '出会いのタイミング', '理想の人との出会い', '素敵な縁', '新しい恋', '運命の相手', '特別な出会い', '恋愛の始動', '縁の結び', '出会いの実現', '理想との遭遇', '運命的瞬間', '恋の開始', '縁の成立', '出会いの成就', '理想の実現', '運命の成就'],
+        'actions': ['引き寄せる方法', '出会うための行動', '魅力を高めること', '準備すべきこと', '心がけること', '実践すること', '磨くべきこと', '意識すること', '大切にすること', '高めること', '開くこと', '広げること', '積極性', '前向きさ', 'ポジティブさ', 'オープンマインド', '自分磨き', '内面の充実', '外見の向上', '魅力の開発']
+    }
+}
+
+def escape_sql_string(s):
+    """SQL文字列をエスケープ（シングルクォートを2重に）"""
+    return str(s).replace("'", "''")
+
+def get_card_name(card_id):
+    """カードIDから名称を取得"""
+    card = card_df[card_df['カードID'] == card_id]
+    if len(card) > 0:
+        return card.iloc[0]['名称']
+    return ''
+
+def get_card_keyword(card_id):
+    """カードIDからキーワードを取得"""
+    card = card_df[card_df['カードID'] == card_id]
+    if len(card) > 0:
+        return card.iloc[0]['キーワード']
+    return ''
+
+def get_card_summary(card_id):
+    """カードIDから概要を取得"""
+    card = card_df[card_df['カードID'] == card_id]
+    if len(card) > 0:
+        return card.iloc[0]['概要']
+    return ''
+
+def get_random_cards_for_menu(contents_id, num_items):
+    """contents_id毎に完全ランダムなカード配列を生成（44枚全てから選択）"""
+    random.seed(get_seed_value(contents_id, 'cards'))
+
+    # 全44カードをシャッフル
+    all_cards = ALL_CARDS.copy()
+    random.shuffle(all_cards)
+
+    # 必要な数×4パターン分のカードを用意（重複なし）
+    needed_cards = num_items * 4
+    if needed_cards > 44:
+        # 44枚以上必要な場合は繰り返し
+        result = all_cards * ((needed_cards // 44) + 1)
+        return result[:needed_cards]
+    else:
+        return all_cards[:needed_cards]
+
+def generate_dynamic_item_name(contents_id, item_index, category_id):
+    """カテゴリーに応じた自然な項目名を生成（重複なし）"""
+    # contents_idでシャッフルの順番を決定
+    random.seed(get_seed_value(contents_id, 'items'))
+
+    # カテゴリーごとの自然な質問形式
+    if category_id == 1:  # 両思い
+        items = [
+            'あの人の本当の気持ち',
+            '二人の関係は今後どうなる？',
+            '相手が今あなたに感じていること',
+            '二人の絆を深めるために大切なこと',
+            'これから二人に訪れる変化',
+            '相手があなたに求めているもの',
+            '二人の愛を育むために必要なこと',
+            '相手が秘めている想い',
+            '二人の未来に待ち受けているもの',
+            '関係をより良くするために意識すべきこと'
+        ]
+    elif category_id == 2:  # 片思い
+        items = [
+            'あの人は私のことをどう思っている？',
+            '恋が実る可能性',
+            '相手の心に近づく方法',
+            '告白のベストタイミング',
+            'あの人が今抱えている悩み',
+            'この恋の行方',
+            '相手の心を動かすために必要なこと',
+            'あの人が理想とする相手像',
+            '二人の距離を縮めるきっかけ',
+            'この先あなたが取るべき行動'
+        ]
+    elif category_id == 3:  # 相手の気持ち
+        items = [
+            '相手の本音',
+            'あの人が今考えていること',
+            '相手があなたに抱いている印象',
+            'あの人の心の中',
+            '相手が感じている不安や迷い',
+            'あの人があなたに期待していること',
+            '相手の本当の感情',
+            'あの人が隠している想い',
+            '相手の今後の気持ちの変化',
+            'あの人があなたに伝えたいこと'
+        ]
+    elif category_id == 4:  # 不倫
+        items = [
+            '相手の本気度',
+            'この関係の行く末',
+            '相手が抱える葛藤',
+            '二人の関係が向かう先',
+            '相手があなたをどう想っているか',
+            'この先訪れる転機',
+            '関係を続けるリスクと可能性',
+            '相手の家族への想い',
+            'あなたが今決断すべきこと',
+            'この恋の最終的な結末'
+        ]
+    elif category_id == 5:  # 夜の相性
+        items = [
+            '二人の肉体的相性',
+            '相手が感じている満足度',
+            'より深い一体感を得るには',
+            '相手が求めているもの',
+            '二人の親密さの深まり',
+            '相手が抱いている欲求',
+            '関係をより充実させる方法',
+            '相手の秘められた願望',
+            '二人の絆を深める鍵',
+            '心身ともに満たされるために'
+        ]
+    elif category_id == 6:  # 結婚
+        items = [
+            '相手の結婚への本気度',
+            '結婚後の二人の生活',
+            '相手が結婚相手に求めるもの',
+            '結婚のベストタイミング',
+            '二人が築く家庭の未来',
+            '結婚に向けた障害と乗り越え方',
+            '相手の家族との関係',
+            '結婚後に訪れる変化',
+            '二人が幸せな結婚をするために',
+            '生涯のパートナーとしての相性'
+        ]
+    elif category_id == 7:  # 人生
+        items = [
+            'あなたの人生の転機',
+            '今のあなたに必要なこと',
+            'あなたの才能と可能性',
+            '人生で大切にすべき価値観',
+            'あなたが進むべき道',
+            '今後訪れる大きな変化',
+            'あなたの使命',
+            '人生を豊かにするヒント',
+            'あなたが乗り越えるべき課題',
+            '真の幸せを掴むために'
+        ]
+    elif category_id == 8:  # 仕事
+        items = [
+            '今の仕事での成功の鍵',
+            'キャリアアップのチャンス',
+            '職場での人間関係',
+            '転職を考えるべきか',
+            '仕事で評価されるポイント',
+            '今後の仕事運',
+            'あなたの才能を活かす方法',
+            '仕事での困難を乗り越えるには',
+            '理想のキャリアを築くために',
+            '仕事で大切にすべきこと'
+        ]
+    elif category_id == 9:  # 復縁
+        items = [
+            '元恋人の今の気持ち',
+            '復縁の可能性',
+            '別れた原因と学ぶべきこと',
+            '復縁のベストタイミング',
+            '相手があなたをどう思っているか',
+            'やり直すために必要なこと',
+            '相手の今の状況',
+            '復縁後の二人の関係',
+            '今あなたが取るべき行動',
+            'この恋を諦めるべきか続けるべきか'
+        ]
+    elif category_id == 10:  # 出会い
+        items = [
+            '運命の出会いの予感',
+            '理想の相手と出会う時期',
+            '出会いを引き寄せる方法',
+            'あなたの恋愛運',
+            '素敵な出会いが訪れる場所',
+            '恋愛での魅力を高めるには',
+            '運命の人の特徴',
+            '新しい恋の始まり',
+            '出会いのチャンスを掴むために',
+            '理想の恋愛を実現するヒント'
+        ]
+    else:
+        items = ['項目' + str(item_index + 1)]
+
+    # リストをシャッフルして、item_indexで順番に選ぶ（重複回避）
+    random.shuffle(items)
+    return items[item_index % len(items)]
+
+def generate_varied_reading_text(card_id, item_text, category_id, contents_id, item_index, pattern_num):
+    """鑑定文生成用のプレースホルダーを返す（後でClaude が具体的な鑑定文に置き換える）"""
+    card_name = get_card_name(card_id)
+    card_keyword = get_card_keyword(card_id)
+    card_summary = get_card_summary(card_id)
+
+    # プレースホルダー形式で情報を埋め込む（後で置き換え可能にする）
+    placeholder = f"__READING__{contents_id}_{item_index}_{pattern_num}__"
+
+    return placeholder
+
+def initialize_openai_client():
+    """OpenAIクライアントを初期化（.envから認証情報を読み込む）"""
+    api_key = os.getenv('OPENAI_KEY')
+    model = os.getenv('OPENAI_MODEL', 'gpt-5-mini')
+
+    if not api_key:
+        raise ValueError('OPENAI_KEYが.envファイルに設定されていません')
+
+    client = OpenAI(api_key=api_key)
+    return client, model
+
+def create_reading_generation_prompt(card_name, card_keyword, card_summary, item_name, category_id):
+    """鑑定文生成用のプロンプトを作成（CLAUDE_MENU_GENERATION_GUIDEの品質基準に従う）"""
+
+    # カテゴリー名を取得
+    category_names = {
+        1: '両思い',
+        2: '片思い',
+        3: '相手の気持ち',
+        4: '不倫',
+        5: '夜の相性',
+        6: '結婚',
+        7: '人生',
+        8: '仕事',
+        9: '復縁',
+        10: '出会い'
+    }
+    category_name = category_names.get(category_id, '占い')
+
+    prompt = f"""あなたはハワイアンタロット占い師です。以下の情報をもとに、具体的で充実した鑑定文を生成してください。
+
+【カード情報】
+- カード名: {card_name}
+- キーワード: {card_keyword}
+- 概要: {card_summary}
+
+【占い項目】
+- カテゴリー: {category_name}
+- 質問/項目: {item_name}
+
+【鑑定文の品質基準】
+1. カード情報の明示: 必ず「ハワイアンタロットに現れたのは【{card_name}】のカードです。」から始める
+2. キーワードの具体的活用: 「{card_keyword}」と「{card_summary}」を具体的に解釈して活用
+3. 占い項目への明確な答え: 「{item_name}」という質問に対して明確な答えを提示
+4. 具体的なアドバイス: 実践可能な具体的なアドバイスを含める
+5. 文字数: 300文字以上（理想は350-450文字）
+6. 定型文禁止: 定型文っぽい表現は避け、このカード・この項目に特化した内容にする
+
+【避けるべき表現】
+- どのカードにも当てはまる漠然とした内容
+- キーワードを単に並べただけの内容
+- 占い項目と無関係な内容
+
+【鑑定文の構成】
+1. カード名の提示
+2. キーワードと概要の紹介
+3. 占い項目との関連付け
+4. 具体的なアドバイス
+5. 前向きな締めくくり
+
+上記の基準に従って、鑑定文のみを出力してください（説明や前置きは不要です）。"""
+
+    return prompt
+
+def generate_single_reading(client, model, card_name, card_keyword, card_summary, item_name, category_id):
+    """gpt-5-mini APIを使用して単一の鑑定文を生成"""
+    try:
+        prompt = create_reading_generation_prompt(card_name, card_keyword, card_summary, item_name, category_id)
+
+        # システムメッセージをプロンプトに統合
+        full_prompt = "あなたはハワイアンタロットの専門占い師です。具体的で深い洞察に満ちた鑑定文を生成します。\n\n" + prompt
+
+        response = client.responses.create(
+            model=model,
+            input=full_prompt
+        )
+
+        reading_text = response.output_text.strip()
+        return reading_text
+
+    except Exception as e:
+        print(f'エラー: 鑑定文の生成に失敗しました - {e}')
+        return None
+
+def generate_all_readings_with_api(request_data):
+    """request_dataの全ての鑑定文をgpt-5-mini APIで生成"""
+    client, model = initialize_openai_client()
+
+    print(f'gpt-5-mini APIで鑑定文を生成中（モデル: {model}）...')
+
+    total_readings = len(request_data['readings'])
+    for i, reading in enumerate(request_data['readings'], 1):
+        print(f'[{i}/{total_readings}] 生成中: {reading["item_name"]} (パターン{reading["pattern_num"]})', end=' ')
+
+        reading_text = generate_single_reading(
+            client,
+            model,
+            reading['card_name'],
+            reading['card_keyword'],
+            reading['card_summary'],
+            reading['item_name'],
+            reading['category_id']
+        )
+
+        if reading_text:
+            reading['reading_text'] = reading_text
+            print(f'[OK] ({len(reading_text)}文字)')
+        else:
+            print('[NG] 失敗')
+            reading['reading_text'] = f"__READING__{reading['contents_id']}_{reading['item_index']}_{reading['pattern_num']}__"
+
+    return request_data
+
+def generate_menu_titles_with_api(client, model, contents_id, category_id, num_items, readings):
+    """メニュー名・キャッチ・キャプションをgpt-5-mini APIで生成"""
+
+    # カテゴリー名を取得
+    category_names = {
+        1: '両思い',
+        2: '片思い',
+        3: '相手の気持ち',
+        4: '不倫',
+        5: '夜の相性',
+        6: '結婚',
+        7: '人生',
+        8: '仕事',
+        9: '復縁',
+        10: '出会い'
+    }
+    category_name = category_names.get(category_id, '占い')
+
+    # 項目名のリストを作成
+    item_names = list(set([r['item_name'] for r in readings]))
+
+    prompt = f"""ハワイアンタロット占いメニューの魅力的なタイトルを生成してください。
+
+【メニュー情報】
+- カテゴリー: {category_name}
+- 項目数: {num_items}個
+- 占い項目: {', '.join(item_names[:3])}など
+
+【要件】
+1. menu_name（メニュー名）:
+   - 項目数を明示（例：「◆{num_items}つの真実」）
+   - ユーザーの関心に直結
+   - 視覚的アクセント（◆※【】など）を使用
+   - 20-30文字程度
+
+2. catch（キャッチフレーズ）:
+   - 完全性を示す（「完全解明」「徹底鑑定」など）
+   - 短く力強い（10-15文字）
+
+3. caption（説明文）:
+   - 2-3文程度
+   - ユーザーの悩みに共感
+   - このメニューで何がわかるかを明示
+   - 50-80文字程度
+
+【出力形式】
+以下のJSON形式で出力してください：
+{{
+  "menu_name": "メニュー名",
+  "catch": "キャッチフレーズ",
+  "caption": "説明文"
+}}"""
+
+    try:
+        # システムメッセージをプロンプトに統合
+        full_prompt = "あなたは魅力的な占いメニューのタイトルを生成する専門家です。\n\n" + prompt
+
+        response = client.responses.create(
+            model=model,
+            input=full_prompt
+        )
+
+        result_text = response.output_text.strip()
+
+        # JSONを抽出（マークダウンのコードブロックが含まれている場合に対応）
+        if '```json' in result_text:
+            result_text = result_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in result_text:
+            result_text = result_text.split('```')[1].split('```')[0].strip()
+
+        titles = json.loads(result_text)
+        return titles['menu_name'], titles['catch'], titles['caption']
+
+    except Exception as e:
+        print(f'警告: タイトル生成に失敗しました。デフォルト値を使用します - {e}')
+        # フォールバック: 既存の関数を使用
+        return (
+            generate_unique_menu_name(contents_id, category_id),
+            generate_unique_catch(contents_id, category_id),
+            generate_unique_caption(contents_id, category_id)
+        )
+
+def generate_unique_menu_name(contents_id, category_id):
+    """カテゴリーに応じた自然なメニュー名を生成"""
+    random.seed(get_seed_value(contents_id, 'title'))
+
+    # カテゴリーごとの自然なメニュー名
+    if category_id == 1:  # 両思い
+        names = [
+            'あの人の本音と二人の未来',
+            '二人の関係を深く占う',
+            '相手の気持ちと今後の展開',
+            'これから二人はどうなる？',
+            '愛を育むために知っておくべきこと',
+            '二人の絆と未来の可能性',
+            '相手の想いと関係の行方',
+            '今のあの人の気持ちを知る',
+            '二人の愛の深まりを占う',
+            '相手があなたに求めているもの'
+        ]
+    elif category_id == 2:  # 片思い
+        names = [
+            'あの人の気持ちと恋の行方',
+            '片想いを実らせるために',
+            '相手の本音を知って恋を叶える',
+            'この恋はどうなる？完全鑑定',
+            'あの人との距離を縮める方法',
+            '片想い成就の可能性を占う',
+            '相手の心を動かすヒント',
+            'あの人があなたをどう思っているか',
+            '恋を実らせるタイミングと方法',
+            'この片想いの未来を見通す'
+        ]
+    elif category_id == 3:  # 相手の気持ち
+        names = [
+            'あの人の本当の気持ち',
+            '相手の心の中を覗く',
+            'あの人があなたに抱く想い',
+            '相手の本音と今後の気持ち',
+            'あの人の隠れた感情を読み解く',
+            '相手が考えていること全て',
+            'あの人の心を徹底的に占う',
+            '相手の本心と将来の気持ち',
+            'あの人があなたに思うこと',
+            '相手の気持ちの変化を予測'
+        ]
+    elif category_id == 4:  # 不倫
+        names = [
+            'この恋の行方と相手の本気度',
+            '禁断の恋の未来を占う',
+            '相手の本音とこの関係の結末',
+            '二人の関係が向かう先',
+            'この恋をどうすべきか',
+            '相手の想いと今後の展開',
+            '複雑な恋の真実と未来',
+            'この関係の可能性とリスク',
+            '相手の気持ちと覚悟を知る',
+            '禁じられた恋の行く末'
+        ]
+    elif category_id == 5:  # 夜の相性
+        names = [
+            '二人の肉体的相性を占う',
+            '心と体の繋がりを深めるには',
+            '相手の満足度と求めているもの',
+            '二人の親密さをより高めるために',
+            '夜の関係から見る二人の絆',
+            '相手の本音と肉体的な相性',
+            'より深い一体感を得る方法',
+            '二人の相性と満たし合う関係',
+            '心身ともに満たされる関係へ',
+            '夜の時間が教えてくれること'
+        ]
+    elif category_id == 6:  # 結婚
+        names = [
+            '結婚の可能性と相手の本気度',
+            '二人の結婚運を詳しく占う',
+            '結婚後の生活と幸せな未来',
+            '相手の結婚観とベストタイミング',
+            'この人と結婚すべきか',
+            '結婚に向けた二人の未来',
+            '生涯のパートナーとしての相性',
+            '結婚への道のりを完全鑑定',
+            '相手の本音と結婚の行方',
+            '幸せな結婚生活を築くために'
+        ]
+    elif category_id == 7:  # 人生
+        names = [
+            'あなたの人生の転機と進むべき道',
+            '今後の人生を豊かにする指針',
+            'あなたの使命と才能を知る',
+            '人生の岐路で選ぶべき道',
+            '真の幸せを掴むために',
+            'これからの人生を占う',
+            'あなたが歩むべき人生の道',
+            '人生の目的と可能性を探る',
+            '今のあなたに必要なこと',
+            '人生を変える重要なヒント'
+        ]
+    elif category_id == 8:  # 仕事
+        names = [
+            '仕事運とキャリアの未来',
+            '今の仕事での成功の鍵',
+            'キャリアアップの可能性を占う',
+            '転職すべきか今を続けるべきか',
+            '仕事で評価されるために',
+            'あなたの才能と仕事運',
+            '職場の人間関係と仕事の行方',
+            '理想のキャリアを築くために',
+            '今後の仕事運を詳しく占う',
+            '仕事での成功と幸せへの道'
+        ]
+    elif category_id == 9:  # 復縁
+        names = [
+            '元恋人の気持ちと復縁の可能性',
+            'やり直せるか徹底的に占う',
+            '復縁のチャンスとタイミング',
+            '相手の今の気持ちと未来',
+            'この恋をもう一度取り戻すには',
+            '別れた相手との復縁運',
+            '元恋人の本音とやり直す方法',
+            '復縁の可能性を完全鑑定',
+            '別れた原因と復縁への道',
+            'もう一度あの人と結ばれるために'
+        ]
+    elif category_id == 10:  # 出会い
+        names = [
+            '運命の出会いはいつ訪れる？',
+            '理想の相手と出会う方法',
+            'あなたの恋愛運と出会いの時期',
+            '素敵な出会いを引き寄せるには',
+            '運命の人の特徴と出会う場所',
+            'これから訪れる出会いを占う',
+            '新しい恋の予感と可能性',
+            '理想の恋愛を実現するために',
+            '出会い運を高める方法',
+            'あなたを待つ運命の出会い'
+        ]
+    else:
+        names = ['ハワイアンタロット鑑定']
+
+    return random.choice(names)
+
+def generate_unique_catch(contents_id, category_id):
+    """自然なキャッチフレーズを生成"""
+    random.seed(get_seed_value(contents_id, 'catch'))
+
+    catches = [
+        '完全鑑定',
+        '詳細占い',
+        '徹底解明',
+        '運命を占う',
+        '真実を知る',
+        '未来を見通す',
+        '全てを明かす',
+        '答えを導く',
+        '道を照らす',
+        '運命の導き'
+    ]
+
+    return random.choice(catches)
+
+def generate_unique_caption(contents_id, category_id):
+    """カテゴリーに応じた自然なキャプションを生成"""
+    random.seed(get_seed_value(contents_id, 'caption'))
+
+    # カテゴリーごとの自然なキャプション
+    if category_id in [1, 2, 3, 4, 6, 9]:  # 恋愛系
+        captions = [
+            '気になるあの人の本当の気持ちは？　二人の未来はどうなる？　ハワイアンタロットが恋の行方を詳しく占います。',
+            '相手の本音を知りたい…　この恋はどうなるの？　ハワイアンタロットがあなたの恋愛を徹底鑑定します。',
+            'あの人との関係に悩むあなたへ。相手の気持ちと今後の展開を、ハワイアンタロットが詳しく教えます。',
+            '二人の未来が知りたい！　相手の本当の想いは？　ハワイアンタロットが恋の真実を明らかにします。',
+            '相手の心の中を覗いてみませんか？　気になる恋の行方を、ハワイアンタロットが完全鑑定します。',
+            'この恋をどうすべきか迷っているあなたへ。相手の気持ちと未来を、ハワイアンタロットが占います。',
+            'あの人の本音が知りたい！　二人の関係はこれからどうなる？　ハワイアンタロットが詳しく教えます。',
+            '恋の悩みを解決したい…　相手の本当の気持ちと今後の展開を、ハワイアンタロットが鑑定します。',
+            '気になる二人の未来。相手があなたに抱く想いと今後の関係を、ハワイアンタロットが占います。',
+            'あの人との恋に悩むあなたへ。相手の本心と二人の行方を、ハワイアンタロットが詳しく鑑定します。'
+        ]
+    elif category_id == 5:  # 夜の相性
+        captions = [
+            '二人の肉体的な相性は？　より深い絆を築くには？　ハワイアンタロットが二人の関係を詳しく占います。',
+            '心と体の繋がりを深めたい…　相手が求めているものは？　ハワイアンタロットが二人の相性を鑑定します。',
+            '二人の親密さをもっと高めたいあなたへ。夜の相性と絆を深める方法を、ハワイアンタロットが教えます。',
+            '相手の満足度は？　より深い一体感を得るには？　ハワイアンタロットが二人の関係を完全鑑定します。',
+            '二人の絆をさらに深めたい！　心身ともに満たされる関係を、ハワイアンタロットが占います。'
+        ]
+    elif category_id == 7:  # 人生
+        captions = [
+            'あなたの人生の転機はいつ？　進むべき道は？　ハワイアンタロットが人生の指針を詳しく占います。',
+            '今のあなたに必要なことは何？　人生を豊かにするヒントを、ハワイアンタロットが教えます。',
+            '人生に迷うあなたへ。あなたの使命と才能、歩むべき道を、ハワイアンタロットが鑑定します。',
+            '真の幸せを掴みたい！　あなたの人生の目的と可能性を、ハワイアンタロットが詳しく占います。',
+            '人生の岐路に立つあなたへ。選ぶべき道と未来の可能性を、ハワイアンタロットが完全鑑定します。'
+        ]
+    elif category_id == 8:  # 仕事
+        captions = [
+            '今の仕事で成功するには？　キャリアの未来は？　ハワイアンタロットが仕事運を詳しく占います。',
+            '転職すべきか悩むあなたへ。今後のキャリアと仕事での成功の鍵を、ハワイアンタロットが教えます。',
+            '仕事運を上げたい！　あなたの才能と評価されるポイントを、ハワイアンタロットが鑑定します。',
+            'キャリアアップの可能性は？　理想の仕事を実現するために、ハワイアンタロットが詳しく占います。',
+            '職場の人間関係と今後の仕事運。あなたのキャリアの未来を、ハワイアンタロットが完全鑑定します。'
+        ]
+    elif category_id == 10:  # 出会い
+        captions = [
+            '運命の出会いはいつ訪れる？　理想の相手と出会うには？　ハワイアンタロットが出会い運を占います。',
+            '素敵な出会いを引き寄せたい！　あなたの恋愛運と出会いの時期を、ハワイアンタロットが教えます。',
+            '新しい恋の予感…　運命の人の特徴と出会う場所を、ハワイアンタロットが詳しく鑑定します。',
+            '理想の恋愛を実現したいあなたへ。出会いのチャンスと引き寄せる方法を、ハワイアンタロットが占います。',
+            '運命の出会いを待つあなたへ。あなたを待つ素敵な出会いを、ハワイアンタロットが完全鑑定します。'
+        ]
+    else:
+        captions = ['あなたの悩みや疑問を、ハワイアンタロットが詳しく占います。']
+
+    return random.choice(captions)
+
+def calculate_start_date(contents_id):
+    """公開日を計算（contents_id=1042が2026-01-01基準）"""
+    base_date = datetime(2026, 1, 1)
+    base_id = 1042
+    days_diff = contents_id - base_id
+    start_date = base_date + timedelta(days=days_diff)
+    return start_date.strftime('%Y-%m-%d %H:%M:%S')
+
+def generate_reading_request_json(contents_id):
+    """鑑定文生成のための情報をJSONで出力"""
+    category_id = ((contents_id - 1043) % 10) + 1
+    random.seed(contents_id)
+    num_items = random.randint(3, 10)
+
+    # contents_id毎に完全ランダムなカード配列を生成
+    menu_cards = get_random_cards_for_menu(contents_id, num_items)
+
+    # 項目名を生成
+    items = []
+    for i in range(num_items):
+        item_name = generate_dynamic_item_name(contents_id, i, category_id)
+        items.append(item_name)
+
+    # 各項目に4つの結果を生成
+    card_index = 0
+    reading_requests = []
+    for i, item_name in enumerate(items, 1):
+        for j in range(1, 5):  # 4パターン
+            card_id = menu_cards[card_index]
+            card_index += 1
+
+            reading_requests.append({
+                "contents_id": contents_id,
+                "item_index": i,
+                "pattern_num": j,
+                "item_name": item_name,
+                "card_id": card_id,
+                "card_name": get_card_name(card_id),
+                "card_keyword": get_card_keyword(card_id),
+                "card_summary": get_card_summary(card_id),
+                "category_id": category_id,
+                "placeholder": f"__READING__{contents_id}_{i}_{j}__",
+                "reading_text": ""  # Claudeが埋める
+            })
+
+    return {
+        "contents_id": contents_id,
+        "category_id": category_id,
+        "num_items": num_items,
+        "readings": reading_requests
+    }
+
+def generate_truly_unique_menu_sql(contents_id, readings_data=None):
+    """完全にユニークなメニュー用SQLファイルを生成"""
+    # カテゴリーをローテーション（1-10をループ）
+    category_id = ((contents_id - 1043) % 10) + 1
+
+    # 項目数をランダムに決定（3〜10項目）
+    random.seed(contents_id)
+    num_items = random.randint(3, 10)
+
+    # 完全ユニークなメニュー名・キャッチ・キャプションを生成
+    # readings_dataにmenu_nameとcatchがあればそれを使用
+    if readings_data and 'menu_name' in readings_data:
+        menu_name = readings_data['menu_name']
+    else:
+        menu_name = generate_unique_menu_name(contents_id, category_id)
+
+    if readings_data and 'catch' in readings_data:
+        catch = readings_data['catch']
+    else:
+        catch = generate_unique_catch(contents_id, category_id)
+
+    if readings_data and 'caption' in readings_data:
+        caption = readings_data['caption']
+    else:
+        caption = generate_unique_caption(contents_id, category_id)
+
+    # 公開日を計算
+    start_date = calculate_start_date(contents_id)
+
+    # contents_id毎に完全ランダムなカード配列を生成
+    menu_cards = get_random_cards_for_menu(contents_id, num_items)
+
+    # SQL生成開始
+    sql = f"""-- ========================================
+-- 占いメニュー: {menu_name}
+-- Contents ID: {contents_id}
+-- カテゴリー: {category_id}
+-- 項目数: {num_items}
+-- 作成日: {datetime.now().strftime('%Y-%m-%d')}
+-- ========================================
+
+-- 1. mana_contentsテーブルに追加
+INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
+({contents_id}, '{escape_sql_string(menu_name)}', '{escape_sql_string(catch)}', '{escape_sql_string(caption)}', {category_id}, NULL, NULL, NULL, NULL, NULL, '{start_date}');
+
+-- 2. mana_menuテーブルに追加
+INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES
+"""
+
+    # 完全動的に項目名を生成
+    items = []
+    for i in range(num_items):
+        item_name = generate_dynamic_item_name(contents_id, i, category_id)
+        items.append(item_name)
+
+    # メニュー項目を追加
+    menu_items = []
+    for i, item_name in enumerate(items, 1):
+        menu_id = int(f"{contents_id}{i:02d}")
+        menu_items.append(f"({contents_id}, {menu_id}, '{escape_sql_string(item_name)}')")
+
+    sql += ',\n'.join(menu_items) + ';\n\n'
+
+    # 結果テーブルを追加
+    sql += "-- 3. mana_resultテーブルに追加\n"
+    sql += "INSERT INTO flowt_seimei.mana_result (contents_id, menu_id, result_id, body) VALUES\n"
+
+    result_items = []
+    card_items = []
+
+    # 各項目に4つの結果を生成
+    card_index = 0
+    for i, item_name in enumerate(items, 1):
+        menu_id = int(f"{contents_id}{i:02d}")
+
+        for j in range(1, 5):  # 4パターン
+            result_id = int(f"{contents_id}{i:02d}{j:02d}")
+            card_id = menu_cards[card_index]
+            card_index += 1
+
+            # 鑑定文を取得（readings_dataがあれば使用、なければプレースホルダー）
+            if readings_data:
+                # readings_dataから対応する鑑定文を取得
+                placeholder = f"__READING__{contents_id}_{i}_{j}__"
+                result_body = None
+                for reading in readings_data.get('readings', []):
+                    if reading['placeholder'] == placeholder:
+                        result_body = reading.get('reading_text', placeholder)
+                        break
+                if not result_body:
+                    result_body = placeholder
+            else:
+                result_body = generate_varied_reading_text(card_id, item_name, category_id, contents_id, i, j)
+
+            result_items.append(f"({contents_id}, {menu_id}, {result_id}, '{escape_sql_string(result_body)}')")
+            card_items.append((contents_id, menu_id, result_id, card_id))
+
+    sql += ',\n'.join(result_items) + ';\n\n'
+
+    # カードテーブルを追加
+    sql += "-- 4. mana_cardテーブルに追加\n"
+    sql += "INSERT INTO flowt_seimei.mana_card (contents_id, menu_id, result_id, body) VALUES\n"
+
+    card_sql_items = []
+    for contents_id_val, menu_id, result_id, card_id in card_items:
+        card_sql_items.append(f"({contents_id_val}, {menu_id}, {result_id}, {card_id})")
+
+    sql += ',\n'.join(card_sql_items) + ';\n\n'
+
+    # 確認クエリを追加
+    sql += f"""-- ========================================
+-- インポート完了
+-- ========================================
+-- 確認クエリ:
+-- SELECT * FROM mana_contents WHERE contents_id = {contents_id};
+-- SELECT * FROM mana_menu WHERE contents_id = {contents_id};
+-- SELECT * FROM mana_result WHERE contents_id = {contents_id};
+-- SELECT * FROM mana_card WHERE contents_id = {contents_id};
+"""
+
+    return sql
+
+# メイン処理
+if __name__ == '__main__':
+    import sys
+
+    # コマンドライン引数をチェック
+    if len(sys.argv) < 2:
+        print('使用方法:')
+        print('  python generate_truly_unique_menus.py --request <start_id> <end_id>')
+        print('    → 鑑定文生成依頼JSONを作成')
+        print('  python generate_truly_unique_menus.py --generate <readings_json_file>')
+        print('    → 鑑定文JSONを読み込んでSQLを生成')
+        print('  python generate_truly_unique_menus.py --auto-generate <start_id> <end_id>')
+        print('    → gpt-5-mini APIで自動的に鑑定文を生成してSQLまで作成')
+        sys.exit(1)
+
+    mode = sys.argv[1]
+
+    if mode == '--request':
+        # 鑑定文生成依頼JSONを作成モード
+        if len(sys.argv) >= 4:
+            start_id = int(sys.argv[2])
+            end_id = int(sys.argv[3])
+        else:
+            # デフォルトはテスト用の1個
+            start_id = 1043
+            end_id = 1043
+
+        print('鑑定文生成依頼JSONを作成します...')
+        print('=' * 50)
+
+        all_requests = []
+        for contents_id in range(start_id, end_id + 1):
+            request_data = generate_reading_request_json(contents_id)
+            all_requests.append(request_data)
+            print(f'[OK] 依頼生成: contents_id={contents_id}, 項目数={request_data["num_items"]}, 鑑定文数={len(request_data["readings"])}')
+
+        # JSONファイルに保存
+        json_filename = f'reading_requests_{start_id}_{end_id}.json'
+        with open(json_filename, 'w', encoding='utf-8') as f:
+            json.dump(all_requests, f, ensure_ascii=False, indent=2)
+
+        print('=' * 50)
+        print(f'\n鑑定文生成依頼JSONを作成しました: {json_filename}')
+        print(f'\n次のステップ:')
+        print(f'1. {json_filename} を Claude に渡す')
+        print(f'2. Claude が各鑑定文の "reading_text" を埋める')
+        print(f'3. 埋まったJSONを保存（例: readings_filled_{start_id}_{end_id}.json）')
+        print(f'4. python generate_truly_unique_menus.py --generate readings_filled_{start_id}_{end_id}.json')
+
+    elif mode == '--generate':
+        # 鑑定文JSONを読み込んでSQLを生成モード
+        if len(sys.argv) < 3:
+            print('エラー: 鑑定文JSONファイルを指定してください')
+            sys.exit(1)
+
+        json_filename = sys.argv[2]
+
+        print(f'鑑定文JSONを読み込んでSQLを生成します: {json_filename}')
+        print('=' * 50)
+
+        # JSONファイルを読み込む
+        with open(json_filename, 'r', encoding='utf-8') as f:
+            all_readings = json.load(f)
+
+        # 各メニューのSQLを生成
+        for menu_data in all_readings:
+            contents_id = menu_data['contents_id']
+            sql_content = generate_truly_unique_menu_sql(contents_id, menu_data)
+
+            filename = f'menu_{contents_id}.sql'
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(sql_content)
+
+            print(f'[OK] SQL生成完了: {filename}')
+            print(f'  カテゴリー: {menu_data["category_id"]}, 項目数: {menu_data["num_items"]}')
+
+        print('=' * 50)
+        print(f'\n全{len(all_readings)}個のメニューSQLファイルを生成しました！')
+
+    elif mode == '--auto-generate':
+        # gpt-5-mini APIで自動生成モード
+        if len(sys.argv) >= 4:
+            start_id = int(sys.argv[2])
+            end_id = int(sys.argv[3])
+        else:
+            # デフォルトはテスト用の1個
+            start_id = 1045
+            end_id = 1045
+
+        print('=' * 50)
+        print('gpt-5-mini APIでメニューを自動生成します')
+        print('=' * 50)
+        print(f'範囲: contents_id {start_id} ～ {end_id}')
+        print(f'モデル: {os.getenv("OPENAI_MODEL", "gpt-5-mini")}')
+        print('=' * 50)
+        print()
+
+        all_filled_data = []
+
+        for contents_id in range(start_id, end_id + 1):
+            print(f'\n【メニューID: {contents_id}】')
+            print('-' * 50)
+
+            # ステップ1: 鑑定文生成依頼JSONを作成
+            print('ステップ1: 依頼データ生成中...')
+            request_data = generate_reading_request_json(contents_id)
+            print(f'  [OK] カテゴリー: {request_data["category_id"]}')
+            print(f'  [OK] 項目数: {request_data["num_items"]}')
+            print(f'  [OK] 鑑定文数: {len(request_data["readings"])}')
+
+            # ステップ2: gpt-5-mini APIで鑑定文を生成
+            print('\nステップ2: gpt-5-mini APIで鑑定文を生成中...')
+            filled_data = generate_all_readings_with_api(request_data)
+
+            # ステップ3: メニュー名・キャッチ・キャプションを生成
+            print('\nステップ3: メニュータイトルを生成中...')
+            client, model = initialize_openai_client()
+            menu_name, catch, caption = generate_menu_titles_with_api(
+                client,
+                model,
+                contents_id,
+                filled_data['category_id'],
+                filled_data['num_items'],
+                filled_data['readings']
+            )
+
+            filled_data['menu_name'] = menu_name
+            filled_data['catch'] = catch
+            filled_data['caption'] = caption
+
+            print(f'  [OK] メニュー名: {menu_name}')
+            print(f'  [OK] キャッチ: {catch}')
+            print(f'  [OK] キャプション: {caption[:50]}...')
+
+            # 中間JSONファイルを保存
+            json_filename = f'readings_filled_{contents_id}_{contents_id}.json'
+            with open(json_filename, 'w', encoding='utf-8') as f:
+                json.dump([filled_data], f, ensure_ascii=False, indent=2)
+            print(f'\n  [OK] 鑑定文JSONを保存: {json_filename}')
+
+            # ステップ4: SQLファイルを生成
+            print('\nステップ4: SQLファイルを生成中...')
+            sql_content = generate_truly_unique_menu_sql(contents_id, filled_data)
+            sql_filename = f'menu_{contents_id}.sql'
+            with open(sql_filename, 'w', encoding='utf-8') as f:
+                f.write(sql_content)
+            print(f'  [OK] SQLファイルを生成: {sql_filename}')
+
+            all_filled_data.append(filled_data)
+
+            print(f'\n[完了] メニューID {contents_id} の生成が完了しました！')
+            print('-' * 50)
+
+        print('\n' + '=' * 50)
+        print(f'全{len(all_filled_data)}個のメニューの自動生成が完了しました！')
+        print('=' * 50)
+        print('\n生成されたファイル:')
+        for data in all_filled_data:
+            cid = data['contents_id']
+            print(f'  - readings_filled_{cid}_{cid}.json')
+            print(f'  - menu_{cid}.sql')
+
+    else:
+        print(f'エラー: 不明なモード "{mode}"')
+        print('使用可能なモード: --request, --generate, --auto-generate')
+        sys.exit(1)
