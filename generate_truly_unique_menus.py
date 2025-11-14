@@ -314,10 +314,13 @@ def generate_varied_reading_text(card_id, item_text, category_id, contents_id, i
 def initialize_openai_client():
     """OpenAIクライアントを初期化（.envから認証情報を読み込む）"""
     api_key = os.getenv('OPENAI_KEY')
-    model = os.getenv('OPENAI_MODEL', 'gpt-5-mini')
+    model = os.getenv('OPENAI_MODEL')
 
     if not api_key:
         raise ValueError('OPENAI_KEYが.envファイルに設定されていません')
+
+    if not model:
+        raise ValueError('OPENAI_MODELが.envファイルに設定されていません')
 
     client = OpenAI(api_key=api_key)
     return client, model
@@ -1052,7 +1055,11 @@ if __name__ == '__main__':
             end_id = 1045
 
         # OpenAI設定を取得
-        api_model = os.getenv('OPENAI_MODEL', 'gpt-4')
+        api_model = os.getenv('OPENAI_MODEL')
+
+        if not api_model:
+            print('エラー: OPENAI_MODELが.envファイルに設定されていません')
+            sys.exit(1)
 
         print('=' * 50)
         print('OpenAI APIでメニューを自動生成します')
