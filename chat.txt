@@ -38,3 +38,5 @@
 2025-11-13 08:46 要求:メニュー1044作成 処理結果:片想いカテゴリ/6項目24鑑定文/魅力的タイトル/SQL生成完了
 2025-11-13 11:20 要求:メニュー1044項目名重複バグ修正と完成 処理結果:generate_dynamic_item_name関数random.shuffle方式に変更/項目名重複完全解消/修正版メニュー1044再生成/6項目24鑑定文生成完了/readings_filled_1044_1044.json更新/menu_1044.sql生成完了
 2025-11-14 17:00 要求:gpt-5-miniモデルAPIで自動メニュー生成仕組み実装 処理結果:gpt-5-mini API統合/responses.createインターフェース実装/--auto-generateモード追加/requirements.txt作成/テストメニューID1045生成成功/鑑定文12個全生成(379-647文字)/CLAUDE_MENU_GENERATION_GUIDE基準準拠/SQLファイル自動生成完了
+2025-11-14 17:40 要求:.envなどセキュア系以外全ファイルのGitHubプッシュ 処理結果:リモートorigin追加完了/mainブランチプッシュ成功/全ファイルGitHub反映完了
+2025-11-14 17:50 要求:APIハードコード修正/文体柔軟化/項目間整合性確保/catch改善 処理結果:OpenAI API呼び出し方法修正(chat.completions.create)/プロンプトに柔らかい文体指示追加/パターンごと整合性チェック機能実装/catchにメニュー内容反映/generate_truly_unique_menus.py全面改修完了

@@ -358,11 +358,14 @@ def create_reading_generation_prompt(card_name, card_keyword, card_summary, item
 4. 具体的なアドバイス: 実践可能な具体的なアドバイスを含める
 5. 文字数: 300文字以上（理想は350-450文字）
 6. 定型文禁止: 定型文っぽい表現は避け、このカード・この項目に特化した内容にする
+7. 文体: 柔らかく親しみやすい雰囲気で、読者に寄り添うような優しい語り口にする
 
 【避けるべき表現】
 - どのカードにも当てはまる漠然とした内容
 - キーワードを単に並べただけの内容
 - 占い項目と無関係な内容
+- 固く堅苦しい表現や難しい言葉
+- 上から目線の表現
 
 【鑑定文の構成】
 1. カード名の提示
@@ -376,19 +379,56 @@ def create_reading_generation_prompt(card_name, card_keyword, card_summary, item
     return prompt
 
 def generate_single_reading(client, model, card_name, card_keyword, card_summary, item_name, category_id):
-    """gpt-5-mini APIを使用して単一の鑑定文を生成"""
+    """OpenAI APIを使用して単一の鑑定文を生成"""
     try:
         prompt = create_reading_generation_prompt(card_name, card_keyword, card_summary, item_name, category_id)
 
-        # システムメッセージをプロンプトに統合
-        full_prompt = "あなたはハワイアンタロットの専門占い師です。具体的で深い洞察に満ちた鑑定文を生成します。\n\n" + prompt
-
-        response = client.responses.create(
+        # システムメッセージとユーザーメッセージを構成
+        response = client.chat.completions.create(
             model=model,
-            input=full_prompt
+            messages=[
+                {"role": "system", "content": "あなたはハワイアンタロットの専門占い師です。具体的で深い洞察に満ちた鑑定文を生成します。"},
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        reading_text = response.output_text.strip()
+        reading_text = response.choices[0].message.content.strip()
+        return reading_text
+
+    except Exception as e:
+        print(f'エラー: 鑑定文の生成に失敗しました - {e}')
+        return None
+
+def generate_single_reading_with_context(client, model, card_name, card_keyword, card_summary, item_name, category_id, previous_readings):
+    """OpenAI APIを使用して整合性を保った鑑定文を生成"""
+    try:
+        prompt = create_reading_generation_prompt(card_name, card_keyword, card_summary, item_name, category_id)
+
+        # 前の項目の鑑定結果がある場合は、整合性を保つための指示を追加
+        if previous_readings:
+            context = "\n\n【重要：整合性の確保】\n"
+            context += "このメニューには複数の項目があり、同じパターン内では全項目の鑑定結果が整合している必要があります。\n"
+            context += "以下は、同じパターン内で既に生成された項目の鑑定結果です：\n\n"
+
+            for i, prev in enumerate(previous_readings, 1):
+                context += f"{i}. {prev['item_name']}（{prev['card_name']}）\n"
+                context += f"   鑑定結果の要旨: {prev['reading_text'][:100]}...\n\n"
+
+            context += "上記の鑑定結果と矛盾しないように、一貫性のある内容で鑑定文を生成してください。\n"
+            context += "例えば、前の項目で「関係が順調に進む」と出ているのに、この項目で「関係が破綻する」などの矛盾は避けてください。\n"
+
+            prompt = context + "\n" + prompt
+
+        # システムメッセージとユーザーメッセージを構成
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "あなたはハワイアンタロットの専門占い師です。具体的で深い洞察に満ちた鑑定文を生成します。複数の項目がある場合は、全項目を通して整合性のある鑑定結果を提供します。"},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        reading_text = response.choices[0].message.content.strip()
         return reading_text
 
     except Exception as e:
@@ -396,36 +436,62 @@ def generate_single_reading(client, model, card_name, card_keyword, card_summary
         return None
 
 def generate_all_readings_with_api(request_data):
-    """request_dataの全ての鑑定文をgpt-5-mini APIで生成"""
+    """request_dataの全ての鑑定文をOpenAI APIで生成（パターンごとに整合性を保つ）"""
     client, model = initialize_openai_client()
 
-    print(f'gpt-5-mini APIで鑑定文を生成中（モデル: {model}）...')
+    print(f'OpenAI APIで鑑定文を生成中（モデル: {model}）...')
+
+    # パターンごとにグループ化
+    pattern_groups = {}
+    for reading in request_data['readings']:
+        pattern_num = reading['pattern_num']
+        if pattern_num not in pattern_groups:
+            pattern_groups[pattern_num] = []
+        pattern_groups[pattern_num].append(reading)
 
     total_readings = len(request_data['readings'])
-    for i, reading in enumerate(request_data['readings'], 1):
-        print(f'[{i}/{total_readings}] 生成中: {reading["item_name"]} (パターン{reading["pattern_num"]})', end=' ')
+    counter = 0
 
-        reading_text = generate_single_reading(
-            client,
-            model,
-            reading['card_name'],
-            reading['card_keyword'],
-            reading['card_summary'],
-            reading['item_name'],
-            reading['category_id']
-        )
+    # パターンごとに生成（パターン内で整合性を保つ）
+    for pattern_num in sorted(pattern_groups.keys()):
+        pattern_readings = pattern_groups[pattern_num]
 
-        if reading_text:
-            reading['reading_text'] = reading_text
-            print(f'[OK] ({len(reading_text)}文字)')
-        else:
-            print('[NG] 失敗')
-            reading['reading_text'] = f"__READING__{reading['contents_id']}_{reading['item_index']}_{reading['pattern_num']}__"
+        # パターン内の各項目を順番に生成し、前の項目の結果を参照
+        previous_readings = []
+
+        for reading in pattern_readings:
+            counter += 1
+            print(f'[{counter}/{total_readings}] 生成中: {reading["item_name"]} (パターン{reading["pattern_num"]})', end=' ')
+
+            # 前の項目の鑑定結果を含めたプロンプトを生成
+            reading_text = generate_single_reading_with_context(
+                client,
+                model,
+                reading['card_name'],
+                reading['card_keyword'],
+                reading['card_summary'],
+                reading['item_name'],
+                reading['category_id'],
+                previous_readings
+            )
+
+            if reading_text:
+                reading['reading_text'] = reading_text
+                print(f'[OK] ({len(reading_text)}文字)')
+                # 次の項目のために、この鑑定結果を保存
+                previous_readings.append({
+                    'item_name': reading['item_name'],
+                    'reading_text': reading_text,
+                    'card_name': reading['card_name']
+                })
+            else:
+                print('[NG] 失敗')
+                reading['reading_text'] = f"__READING__{reading['contents_id']}_{reading['item_index']}_{reading['pattern_num']}__"
 
     return request_data
 
 def generate_menu_titles_with_api(client, model, contents_id, category_id, num_items, readings):
-    """メニュー名・キャッチ・キャプションをgpt-5-mini APIで生成"""
+    """メニュー名・キャッチ・キャプションをOpenAI APIで生成"""
 
     # カテゴリー名を取得
     category_names = {
@@ -460,8 +526,9 @@ def generate_menu_titles_with_api(client, model, contents_id, category_id, num_i
    - 20-30文字程度
 
 2. catch（キャッチフレーズ）:
-   - 完全性を示す（「完全解明」「徹底鑑定」など）
-   - 短く力強い（10-15文字）
+   - このメニュー特有の内容を短文で表現
+   - 占い項目の内容がわかるように（例：「{category_name}の{item_names[0]}と{item_names[1] if len(item_names) > 1 else "未来"}を占う」）
+   - 15-25文字程度
 
 3. caption（説明文）:
    - 2-3文程度
@@ -478,15 +545,16 @@ def generate_menu_titles_with_api(client, model, contents_id, category_id, num_i
 }}"""
 
     try:
-        # システムメッセージをプロンプトに統合
-        full_prompt = "あなたは魅力的な占いメニューのタイトルを生成する専門家です。\n\n" + prompt
-
-        response = client.responses.create(
+        # OpenAI APIを正しい形式で呼び出す
+        response = client.chat.completions.create(
             model=model,
-            input=full_prompt
+            messages=[
+                {"role": "system", "content": "あなたは魅力的な占いメニューのタイトルを生成する専門家です。"},
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        result_text = response.output_text.strip()
+        result_text = response.choices[0].message.content.strip()
 
         # JSONを抽出（マークダウンのコードブロックが含まれている場合に対応）
         if '```json' in result_text:
@@ -983,11 +1051,14 @@ if __name__ == '__main__':
             start_id = 1045
             end_id = 1045
 
+        # OpenAI設定を取得
+        api_model = os.getenv('OPENAI_MODEL', 'gpt-4')
+
         print('=' * 50)
-        print('gpt-5-mini APIでメニューを自動生成します')
+        print('OpenAI APIでメニューを自動生成します')
         print('=' * 50)
         print(f'範囲: contents_id {start_id} ～ {end_id}')
-        print(f'モデル: {os.getenv("OPENAI_MODEL", "gpt-5-mini")}')
+        print(f'モデル: {api_model}')
         print('=' * 50)
         print()
 
@@ -1004,8 +1075,8 @@ if __name__ == '__main__':
             print(f'  [OK] 項目数: {request_data["num_items"]}')
             print(f'  [OK] 鑑定文数: {len(request_data["readings"])}')
 
-            # ステップ2: gpt-5-mini APIで鑑定文を生成
-            print('\nステップ2: gpt-5-mini APIで鑑定文を生成中...')
+            # ステップ2: OpenAI APIで鑑定文を生成
+            print('\nステップ2: OpenAI APIで鑑定文を生成中...')
             filled_data = generate_all_readings_with_api(request_data)
 
             # ステップ3: メニュー名・キャッチ・キャプションを生成
