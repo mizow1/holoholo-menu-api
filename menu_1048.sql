@@ -1,5 +1,5 @@
 -- ========================================
--- 占いメニュー: ◆【7つの真実】結婚後の変化と幸せの羅針盤
+-- 占いメニュー: ◆【7つのサイン】結婚後の変化と幸せの羅針盤
 -- Contents ID: 1048
 -- カテゴリー: 6
 -- 項目数: 7
@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1048, '【7つの真実】結婚後の変化と幸せの羅針盤', '二人で築く幸せな結婚生活', '結婚後の不安や迷いを抱えているあなたへ。7つの視点で変化、障害、幸せの築き方がわかります。二人で歩む未来のヒントを具体的に示します。', 6, NULL, NULL, NULL, NULL, NULL, '2026-01-07 00:00:00');
+(1048, '◆【7つのサイン】結婚後の変化と幸せの羅針盤', '二人で築く幸せな結婚生活', '結婚後の不安や迷いを抱えているあなたへ。7つの視点で変化、障害、幸せの築き方がわかります。二人で歩む未来のヒントを具体的に示します。', 6, NULL, NULL, NULL, NULL, NULL, '2026-01-07 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES
