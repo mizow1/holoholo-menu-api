@@ -41,3 +41,5 @@
 2025-11-14 17:40 要求:.envなどセキュア系以外全ファイルのGitHubプッシュ 処理結果:リモートorigin追加完了/mainブランチプッシュ成功/全ファイルGitHub反映完了
 2025-11-14 17:50 要求:APIハードコード修正/文体柔軟化/項目間整合性確保/catch改善 処理結果:OpenAI API呼び出し方法修正(chat.completions.create)/プロンプトに柔らかい文体指示追加/パターンごと整合性チェック機能実装/catchにメニュー内容反映/generate_truly_unique_menus.py全面改修完了
 2025-11-14 18:18 要求:モデル名ハードコード削除/.env定義必須化 処理結果:デフォルト値'gpt-5-mini'と'gpt-4o'の矛盾解消/OPENAI_MODEL環境変数必須化/未設定時エラーメッセージ追加/generate_truly_unique_menus.py修正完了
+2025-11-17 12:22 要求:メニュー1048作成 処理結果:結婚カテゴリー/7項目28鑑定文/menu_1048.sql生成完了
+2025-11-17 12:30 要求:キャッチフレーズを女性雑誌風に柔らかく 処理結果:堅苦しい表現禁止ルール化/generate_truly_unique_menus.py修正/CLAUDE_MENU_GENERATION_GUIDE.md更新/良い例・悪い例追加/menu_1048.sql・JSON修正完了

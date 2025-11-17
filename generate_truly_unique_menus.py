@@ -530,7 +530,10 @@ def generate_menu_titles_with_api(client, model, contents_id, category_id, num_i
 
 2. catch（キャッチフレーズ）:
    - このメニュー特有の内容を短文で表現
-   - 占い項目の内容がわかるように（例：「{category_name}の{item_names[0]}と{item_names[1] if len(item_names) > 1 else "未来"}を占う」）
+   - 女性雑誌風の柔らかく親しみやすい表現にする
+   - 「～を占う」「～を鑑定」など堅苦しい表現は避ける
+   - 良い例：「二人で築く幸せな結婚生活」「変化を乗り越え、幸せな二人へ」「二人の未来、幸せの育て方」
+   - 避ける例：「結婚後の変化と障害の克服を占う」「相手の気持ちを鑑定」
    - 15-25文字程度
 
 3. caption（説明文）:
