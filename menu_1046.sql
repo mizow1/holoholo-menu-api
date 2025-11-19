@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1046, '◆10の答えで迫る【不倫の行方完全鑑定】', '徹底鑑定！全真相公開中', '秘密に苦しむあなたへ。ハワイアンタロットで相手の本気度と、この関係の行く末を10項目で徹底解明します。未来の方向性と取るべき行動がわかります。', 4, NULL, NULL, NULL, NULL, NULL, '2026-01-05 00:00:00');
+(1046, '◆10の答えで迫る【不倫の行方完全鑑定】', '誰にも言えない恋、10の真実と決断', '秘密に苦しむあなたへ。ハワイアンタロットで相手の本気度と、この関係の行く末を10項目で徹底解明します。未来の方向性と取るべき行動がわかります。', 4, NULL, NULL, NULL, NULL, NULL, '2026-01-05 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES

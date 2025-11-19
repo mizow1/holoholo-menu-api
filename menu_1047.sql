@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1047, '◆夜を解く4つの鍵【ハワイアンタロット】', '夜の満足度と肉体相性、欲求を占う', '夜の関係に不安や疑問を感じるあなたへ。パートナーの満足度、肉体的相性、秘めた欲求までハワイアンタロットで読み解き、今夜の距離感と改善点がわかります。', 5, NULL, NULL, NULL, NULL, NULL, '2026-01-06 00:00:00');
+(1047, '◆夜を解く4つの鍵【ハワイアンタロット】', '二人の夜、もっと満たされるために', '夜の関係に不安や疑問を感じるあなたへ。パートナーの満足度、肉体的相性、秘めた欲求までハワイアンタロットで読み解き、今夜の距離感と改善点がわかります。', 5, NULL, NULL, NULL, NULL, NULL, '2026-01-06 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES

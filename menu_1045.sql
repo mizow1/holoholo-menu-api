@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1045, '◆3つの扉※相手の本心を覗く【相手の気持ち】', 'あの人の期待・変化・隠れ想いを占う', '好きな人の本心が見えず不安なあなたへ。あの人が期待していること、今後の気持ちの変化、隠した想いまでハワイアンタロットで読み解き、関係のヒントをお伝えします。', 3, NULL, NULL, NULL, NULL, NULL, '2026-01-04 00:00:00');
+(1045, '◆3つの扉※相手の本心を覗く【相手の気持ち】', '見えない本心、3枚のカードが暴く', '好きな人の本心が見えず不安なあなたへ。あの人が期待していること、今後の気持ちの変化、隠した想いまでハワイアンタロットで読み解き、関係のヒントをお伝えします。', 3, NULL, NULL, NULL, NULL, NULL, '2026-01-04 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES

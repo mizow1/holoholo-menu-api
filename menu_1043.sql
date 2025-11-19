@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1043, 'あの人の本音と二人が辿る運命◆8つの秘密', '秘めた想いから未来まで完全解明', '相手は今あなたに何を感じている？　二人の関係はこれからどうなる？　秘められた想いと未来の展開を、ハワイアンタロットが8つの視点から徹底的に占います。', 1, NULL, NULL, NULL, NULL, NULL, '2026-01-02 00:00:00');
+(1043, 'あの人の本音と二人が辿る運命◆8つの秘密', 'あの人の8つの本音、全部知りたくない？', '相手は今あなたに何を感じている？　二人の関係はこれからどうなる？　秘められた想いと未来の展開を、ハワイアンタロットが8つの視点から徹底的に占います。', 1, NULL, NULL, NULL, NULL, NULL, '2026-01-02 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES

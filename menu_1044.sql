@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1044, '片想いを実らせる秘訣◆あの人の心を掴む6つの方法', '恋を成就させる具体的アプローチ', '好きな人に想いを伝えたい、でもどうすればいい？　相手の心を動かす方法から告白のベストタイミングまで、片想いを両想いに変える具体的な道筋をハワイアンタロットが示します。', 2, NULL, NULL, NULL, NULL, NULL, '2026-01-03 00:00:00');
+(1044, '片想いを実らせる秘訣◆あの人の心を掴む6つの方法', '今すぐ使える！両想いへの6つの秘策', '好きな人に想いを伝えたい、でもどうすればいい？　相手の心を動かす方法から告白のベストタイミングまで、片想いを両想いに変える具体的な道筋をハワイアンタロットが示します。', 2, NULL, NULL, NULL, NULL, NULL, '2026-01-03 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES

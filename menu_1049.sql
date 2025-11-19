@@ -8,7 +8,7 @@
 
 -- 1. mana_contentsテーブルに追加
 INSERT INTO flowt_seimei.mana_contents (contents_id, name, catch, caption, category, tag_1, tag_2, tag_3, tag_4, tag_5, start_date) VALUES
-(1049, '10の鍵で紐解く輝く人生の道しるべのヒント', '心に響く、人生を輝かせる指針を見つけよう', '人生の迷いに寄り添い、10個のヒントで価値観や転機の流れを明らかにします。毎日を丁寧に生きるための実践的な気づきが得られます。', 7, NULL, NULL, NULL, NULL, NULL, '2026-01-08 00:00:00');
+(1049, '10の鍵で紐解く輝く人生の道しるべのヒント', '今日から変わる！人生を動かす10の鍵', '人生の迷いに寄り添い、10個のヒントで価値観や転機の流れを明らかにします。毎日を丁寧に生きるための実践的な気づきが得られます。', 7, NULL, NULL, NULL, NULL, NULL, '2026-01-08 00:00:00');
 
 -- 2. mana_menuテーブルに追加
 INSERT INTO flowt_seimei.mana_menu (contents_id, menu_id, name) VALUES
